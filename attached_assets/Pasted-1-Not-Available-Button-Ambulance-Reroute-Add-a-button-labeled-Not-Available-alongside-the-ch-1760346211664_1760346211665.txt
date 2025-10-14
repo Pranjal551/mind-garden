@@ -1,0 +1,114 @@
+1. "Not Available" Button & Ambulance Reroute
+
+Add a button labeled "Not Available" alongside the checklist options.
+
+When clicked, it should:
+
+Check the current hospital's capacity/status.
+
+Automatically reroute the ambulance to the next nearest hospital with available resources.
+
+Notify ambulance driver or system with reroute details (address, ETA).
+
+Logic:
+
+Fetch hospital data (distance, availability).
+
+Sort by nearest with capacity.
+
+Update ambulance route dynamically.
+
+2. Hospital Section replacing Admin
+
+Replace the current Admin button with Hospital Dashboard.
+
+Features:
+
+Inventory Monitoring:
+
+Blood types & quantities
+
+Available beds (ICU, General, Isolation)
+
+Ventilators count & status
+
+Nebulizers count & status
+
+Staff Monitoring:
+
+Doctors on duty (Name, specialty, shift timings)
+
+Nurses & other staff
+
+Patient Bed Management:
+
+List of rooms and beds
+
+Patient info assigned to each bed (Name, condition, admission time)
+
+Bed occupancy status (free/occupied/cleaning)
+
+Real-time Updates & Alerts:
+
+Low stock alerts (blood, equipment)
+
+Emergency patient admissions
+
+Ambulance arrivals and patient handover status
+
+Search & Filter:
+
+Search patients by name or bed number
+
+Filter by resource availability, staff on duty, etc.
+
+3. Additional Feature Suggestions
+
+Ambulance Tracking:
+
+Real-time GPS tracking of ambulances.
+
+Estimated Time of Arrival (ETA) updates.
+
+Patient History Access:
+
+Access basic medical records or notes linked to patient beds.
+
+Notifications System:
+
+Push alerts to hospital staff for emergencies or critical updates.
+
+Analytics Dashboard:
+
+Hospital resource usage trends (weekly/monthly)
+
+Bed turnover rates
+
+Staff shifts and workload balance
+
+User Roles & Permissions:
+
+Different access levels for doctors, nurses, and admin.
+
+Multi-Hospital Management:
+
+If app supports multiple hospitals, switch views to monitor resources across facilities.
+
+Mobile-Friendly Interface:
+
+Responsive design for use on tablets or phones by ambulance drivers or staff.
+
+Sample Code Snippet (React/JSX example for “Not Available” button reroute logic):
+<button onClick={handleNotAvailable}>Not Available</button>
+
+const handleNotAvailable = () => {
+  // fetch nearest hospital with availability
+  const nextHospital = findNearestAvailableHospital(currentLocation, hospitalsData);
+  if(nextHospital) {
+    // reroute ambulance logic here
+    alert(`Ambulance rerouted to ${nextHospital.name} at ${nextHospital.address}`);
+    updateAmbulanceRoute(nextHospital.location);
+  } else {
+    alert('No hospital available nearby');
+  }
+}

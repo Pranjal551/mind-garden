@@ -1,0 +1,134 @@
+Got it. Paste this one prompt to Replit and let it extend the app with a serious, production-style feature set:
+
+⸻
+
+Add the following features to AidPulse (keep Next.js + Supabase + Tailwind stack). Output ALL changed files + DB SQL.
+
+1) Smart triage + routing upgrades
+	•	Triage score (0–100) computed from vitals: HR, SpO2, SBP, RR, GCS. Expose utils/triage.ts with rule-based scoring and a placeholder mlScore() (stub).
+	•	Capability-based routing: hospitals have capabilities (array: ["ICU","Ventilator","Cardio","Peds","Neuro"]) and travel_eta_min (computed). Emergency requires needs (same tags). Pick nearest hospital that satisfies all needs and has capacity; else auto-reroute to next best with reason logged.
+	•	ETA calculation: use Haversine + 30 km/h default; keep interface so we can swap to OSRM/Mapbox later.
+
+DB changes
+
+alter table hospitals add column if not exists capabilities text[] default '{}';
+alter table emergencies add column if not exists needs text[] default '{}';
+alter table emergencies add column if not exists triage_score int default 0;
+alter table emergencies add column if not exists assigned_eta_min int;
+
+2) Multiple emergencies, de-dup, and timeline
+	•	Allow concurrent emergencies.
+	•	De-dup: if same patient_id + within 5 min + within 100m, mark as duplicate_of the original.
+	•	Incident timeline: /admin/incidents/[id] shows chronological events: created, triage, assigned, rerouted, ambulance en-route, arrived, completed, notifications sent.
+
+DB
+
+alter table emergencies add column if not exists duplicate_of uuid references emergencies(id);
+create table if not exists incident_events (
+  id uuid primary key default gen_random_uuid(),
+  emergency_id uuid references emergencies(id) on delete cascade,
+  kind text, -- created|triage|assigned|reroute|enroute|arrived|completed|notified|note
+  data jsonb,
+  ts timestamptz default now()
+);
+
+3) Roles, contacts, and notifications
+	•	Roles already exist; add patient contacts (parents/family) and notify them.
+	•	Abstract Notifier: notifier/index.ts with providers:
+	•	Email (Resend or stub if RESEND_API_KEY missing)
+	•	SMS (Twilio or stub if TWILIO_SID missing)
+	•	Web push (OneSignal or stub if ONESIGNAL_ID missing)
+	•	Fire notifications on: assigned, reroute, arrived, completed, sos.
+	•	Add /settings/contacts UI for patient to add trusted contacts.
+
+DB
+
+create table if not exists patient_contacts (
+  id uuid primary key default gen_random_uuid(),
+  patient_id uuid references users(id) on delete cascade,
+  kind text check (kind in ('email','sms','push')),
+  value text not null,
+  verified boolean default false,
+  created_at timestamptz default now()
+);
+
+4) Driver app upgrades
+	•	/driver gets:
+	•	Start Shift / End Shift
+	•	Accept Assignment (locks emergency to ambulance)
+	•	Open Navigation deeplink to Google Maps/Apple Maps
+	•	Arrived / Completed buttons → write incident events + update status
+	•	Background location queue: if offline, batch positions and flush on reconnect.
+	•	Show reroute banner if assignment changes mid-trip.
+
+DB
+
+create table if not exists ambulance_positions (
+  id bigserial primary key,
+  ambulance_id uuid references ambulances(id),
+  lat double precision, lon double precision, ts timestamptz default now()
+);
+
+5) Hospital capacity console
+	•	/hospital page to update beds_available, doctors_available, capabilities, and toggle accepting_emergencies.
+	•	Bulk CSV import for hospitals (name, lat, lon, capabilities, capacity fields).
+
+DB
+
+alter table hospitals add column if not exists accepting_emergencies boolean default true;
+
+6) Admin dashboard power-ups
+	•	Queue view with filters: status (active/assigned/completed), triage (red/yellow/green), needs tags.
+	•	Clear Log → moves completed emergencies older than 7 days to an emergencies_archive table; provide Export CSV.
+
+create table if not exists emergencies_archive (like emergencies including all);
+
+7) Realtime + RLS
+	•	Use Supabase Realtime on emergencies, incident_events, ambulance_positions.
+	•	Add RLS:
+
+alter table emergencies enable row level security;
+create policy admin_read_all on emergencies for select using (
+  exists (select 1 from profiles p where p.id=auth.uid() and p.role='admin')
+);
+create policy patient_read_own on emergencies for select using (patient_id=auth.uid());
+
+alter table incident_events enable row level security;
+create policy admin_events on incident_events for select using (
+  exists (select 1 from profiles p where p.id=auth.uid() and p.role='admin')
+);
+
+(Keep service-key writes in server actions/route handlers.)
+
+8) Simulation + seed
+	•	Simulator (/api/dev/simulate) that every 60s:
+	•	creates a random emergency with vitals
+	•	computes triage + needs
+	•	assigns hospital and emits timeline
+	•	Seed script: 10 hospitals across city with different capabilities.
+
+9) UI polish
+	•	Global dark mode, shadcn cards, chips (triage: red/yellow/green), skeleton loaders.
+	•	Toasts with emoji (🚑, 🏥, 🔄, ✅).
+	•	Accessibility: focus states, aria labels.
+
+10) README updates
+	•	Env vars: RESEND_API_KEY, TWILIO_*, ONESIGNAL_* (optional), Supabase URL/Anon.
+	•	How to run simulator, how to import hospitals CSV, how to switch ETA provider later.
+
+Also update all API route handlers and server actions to:
+	•	write timeline events
+	•	use Notifier abstraction
+	•	enforce capability matching + reroute
+	•	support de-dup logic
+	•	paginate admin queue
+	•	archive endpoint for Clear Log
+
+Finally, print:
+	•	any new .sql migration
+	•	seed/hospitals.csv example
+	•	a short “demo script” (patient triggers → triage/assign → driver accepts → reroute → arrive → complete → contacts notified).
+
+⸻
+
+If anything blocks (missing keys), create stubs that log to server console but keep the flow working.

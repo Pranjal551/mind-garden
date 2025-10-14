@@ -1,0 +1,156 @@
+Got it — Replit is right about the stack mismatch. Let’s lean into your current stack (Vite + React + Express + in-memory) but make it Supabase-ready with a clean adapter so you can flip a switch later.
+
+Paste this single prompt into Replit. It tells it exactly how to adapt all the features to the current app, keep everything working now, and add a clean migration path to Supabase (auth + DB) without rewriting the app.
+
+⸻
+
+👉 Replit prompt (copy–paste)
+
+Goal: Keep the existing Vite + React + Express + in-memory MVP, but implement the new features and make the backend switchable between InMemoryRepo and SupabaseRepo using an env flag. Add login pages (Supabase OTP), emergency queue, hospital reroute AI, multi-emergency support, clear logs, and nice UI polish. Do not convert to Next.js.
+
+0) Config & folders
+	•	Keep current structure:
+
+/server  (Express + Socket.IO)
+/web     (Vite + React)
+
+
+	•	Add .env.example at repo root:
+
+PORT=3001
+CORS_ORIGIN=http://localhost:5173
+USE_SUPABASE=0
+
+# Only used if USE_SUPABASE=1
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+
+	•	On server start, log which repo is active: InMemoryRepo or SupabaseRepo.
+
+1) Repository pattern (backend)
+
+Create server/repo/index.ts that exports an interface and two implementations:
+
+export interface Repo {
+  // auth / profiles
+  getProfile(userId: string): Promise<{ id: string; role: 'patient'|'driver'|'hospital'|'admin'; name?: string; phone?: string }|null>;
+  upsertProfile(p: { id: string; role?: string; name?: string; phone?: string }): Promise<void>;
+
+  // hospitals
+  listHospitals(): Promise<Hospital[]>;
+  upsertHospital(h: Hospital): Promise<void>;
+
+  // emergencies
+  createEmergency(e: NewEmergency): Promise<Emergency>;
+  listEmergencies(filter?: { status?: string[] }): Promise<Emergency[]>;
+  getEmergency(id: string): Promise<Emergency|null>;
+  updateEmergency(id: string, patch: Partial<Emergency>): Promise<void>;
+  addIncidentEvent(ev: IncidentEvent): Promise<void>;
+  listIncidentEvents(emergencyId: string): Promise<IncidentEvent[]>;
+  archiveCompleted(olderThanDays: number): Promise<number>;
+
+  // ambulance positions
+  addAmbulancePosition(p: AmbulancePosition): Promise<void>;
+  listAmbulancePositions(ambulanceId: string, limit?: number): Promise<AmbulancePosition[]>;
+}
+
+	•	Implement InMemoryRepo in server/repo/inMemory.ts.
+	•	Implement SupabaseRepo in server/repo/supabase.ts using @supabase/supabase-js and SUPABASE_SERVICE_ROLE_KEY.
+	•	Add server/repo/types.ts with TS types for Hospital, Emergency, IncidentEvent, AmbulancePosition, NewEmergency.
+
+Switch via:
+
+// server/repo/selectRepo.ts
+export function selectRepo(): Repo {
+  return process.env.USE_SUPABASE === '1' ? new SupabaseRepo() : new InMemoryRepo();
+}
+
+2) Supabase SQL (only used when USE_SUPABASE=1)
+
+Print a migration SQL file supabase/migration.sql with tables:
+	•	profiles(id uuid pk, role text check ('patient','driver','hospital','admin'), name text, phone text, created_at timestamptz)
+	•	hospitals(id uuid pk default gen_random_uuid(), name text, lat double precision, lon double precision, beds_available int, doctors_available int, capabilities text[] default '{}', accepting_emergencies boolean default true)
+	•	emergencies(id uuid pk default gen_random_uuid(), patient_id uuid, lat double precision, lon double precision, type text, needs text[] default '{}', triage_score int default 0, status text default 'active', assigned_hospital_id uuid, rerouted_to_id uuid, assigned_eta_min int, duplicate_of uuid, created_at timestamptz default now(), updated_at timestamptz)
+	•	incident_events(id uuid pk default gen_random_uuid(), emergency_id uuid references emergencies(id) on delete cascade, kind text, data jsonb, ts timestamptz default now())
+	•	ambulance_positions(id bigserial pk, ambulance_id uuid, lat double precision, lon double precision, ts timestamptz default now())
+
+Enable RLS and basic policies (admins read all; patients read own emergencies). If keys are missing, the server must fall back to InMemory without crashing.
+
+3) Auth (frontend + server)
+	•	Frontend (Vite): Add a /auth route with email OTP using Supabase client (NEXT_PUBLIC style envs in Vite → VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY). If not provided, show a banner “Supabase auth not configured; using guest mode”.
+	•	Server: Add middleware requireAuthOptional:
+	•	If USE_SUPABASE=1, accept Authorization: Bearer <access_token>, validate with Supabase auth.getUser() using service key.
+	•	If USE_SUPABASE=0, allow through but set req.user = { id:'demo', role:'admin' } for demo.
+	•	Add /api/auth/profile to fetch/create a profile after login; profiles live in repo.
+
+4) API endpoints (Express)
+
+Create route modules under server/routes/:
+	•	POST /api/emergencies → create emergency: compute triage score with rule-based logic (HR, SpO2, SBP, RR, GCS). Add needs tags (ICU, Ventilator, Cardio, Peds, Neuro) inferred from type + vitals.
+	•	GET /api/emergencies?status=active,assigned,completed
+	•	GET /api/emergencies/:id → details + events
+	•	POST /api/emergencies/:id/assign → pick hospital using capability + capacity + ETA (Haversine; assume 30 km/h → ETA). If primary hospital cannot, auto-reroute to next best; write incident events (assigned, reroute).
+	•	POST /api/emergencies/:id/complete
+	•	POST /api/emergencies/clear-logs → archive completed > 7 days
+	•	GET /api/hospitals, POST /api/hospitals/import (CSV), PATCH /api/hospitals/:id
+	•	POST /api/driver/accept (lock assignment to ambulance), POST /api/driver/arrived, POST /api/driver/completed
+	•	POST /api/positions → add ambulance position
+	•	All routes use the Repo, never talk to storage directly.
+
+Also add Socket.IO broadcasts for:
+emergency:created, emergency:updated, emergency:assigned, emergency:rerouted, emergency:completed, alerts, and position updates.
+
+5) Frontend (Vite + React)
+
+Add/update routes:
+	•	/login (alias to /auth) → email magic link with Supabase (if configured), else guest.
+	•	/patient (user): “Emergency” button → POST /api/emergencies. Show list of their emergencies + status. Map with their current emergency’s assigned hospital and ambulance (if any).
+	•	/admin:
+	•	Queue with filters: status (active/assigned/completed), triage chips (red/yellow/green), needs tags.
+	•	Clicking an item opens Incident Timeline drawer (events: created, triage, assigned, reroute, en-route, arrived, completed, notifications).
+	•	Clear Logs button → calls /api/emergencies/clear-logs.
+	•	/driver:
+	•	Accept Assignment → shows hospital & route summary, Open in Google Maps link (https://www.google.com/maps/dir/?api=1&destination=lat,lon).
+	•	Arrived / Completed → updates status & timeline.
+	•	Background “positions” sender (interval; if offline, queue and flush).
+	•	/hospital:
+	•	Capacity console: beds, doctors, capabilities chips, Accepting emergencies toggle.
+	•	CSV import for initial hospital list.
+
+UI polish: Tailwind + nice cards, glassmorphism for drawers/panels, react-hot-toast for actions, triage color chips, skeletons. Use Leaflet + OSM tiles for maps (no key). If a maps key is present later (Mapbox), allow swapping tile layer easily.
+
+6) Triage + Routing utilities
+
+Create server/logic/triage.ts and server/logic/routing.ts:
+	•	triageScore(vitals) returns 0–100 + level: red/yellow/green.
+	•	pickHospital(emergency, hospitals) returns best match using:
+	•	capability coverage (must meet all needs),
+	•	capacity (beds_available>0 and accepting_emergencies=true),
+	•	ETA (Haversine with 30 km/h fallback).
+Returns { primary, reason }. If primary can’t accept, pick next and write reroute event.
+
+7) Realtime & simulation
+	•	Enable Socket.IO on server; on significant API actions, emit events so UI reacts live.
+	•	Add /api/dev/simulate which every 60s creates a random emergency and runs assignment, for demo.
+	•	Frontend subscribes to Socket.IO to update admin queue, timelines, and driver view in real time.
+
+8) README + run scripts
+	•	Print README.md with:
+	•	npm run dev:server (Express on 3001), npm run dev:web (Vite on 5173)
+	•	.env instructions and USE_SUPABASE toggle
+	•	Supabase migration SQL path and how to import it when turning on USE_SUPABASE=1
+	•	How to run simulator
+	•	Make the app work fully with InMemoryRepo so no keys are required for demo. When USE_SUPABASE=1 and keys are present, it should transparently use Supabase without code changes.
+
+Important: If any env is missing, do not crash. Show friendly banners in UI (e.g., “Auth not configured — guest mode”).
+
+Finally, print:
+	•	All new/changed files (full contents).
+	•	The supabase/migration.sql.
+	•	A short demo script: Patient triggers emergency → triage+assign → driver accepts → reroute → arrive → complete → admin clears logs.
+
+⸻
+
+This keeps your current stack, adds the features you asked (reroute when hospital lacks arrangements, multiple emergencies, clear log, login pages), and gives you a clean switch to Supabase later by just setting USE_SUPABASE=1 and pasting the SQL.

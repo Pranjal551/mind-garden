@@ -1,0 +1,149 @@
+Perfect — here’s a clean, production-style prompt for Replit Ghostwriter (or Cursor/Claude).
+This one allows external dependencies and multiple files (no single-file chaos), uses Vite + React, and implements real cross-tab notifications with BroadcastChannel + fallback, Web Notifications, and a tidy component structure.
+
+Copy-paste this into the AI:
+
+⸻
+
+Project Goal:
+Create a small Vite + React app that simulates our AI4Health Emergency MVP with three roles: User, Ambulance, Hospital. All three run in the same web app as tabs. When the User triggers SOS, the Ambulance and Hospital tabs receive live alerts and browser notifications. Ambulance can progress status NEW → ACK → ENROUTE → ARRIVED; Hospital can mark Prep Started. State changes must sync instantly across tabs via BroadcastChannel (with localStorage fallback).
+
+Stack & Dependencies:
+	•	Tooling: Vite + React + TypeScript
+	•	State: Zustand (lightweight global store)
+	•	Utilities: optional dayjs for time
+	•	Styling: Tailwind CSS (or plain CSS modules if easier)
+	•	Optional: qrcode (npm) for QR fallback; NFC is optional (Web NFC if time permits)
+
+Scripts:
+	•	npm create vite@latest ai4h -- --template react-ts
+	•	cd ai4h && npm i zustand dayjs qrcode
+	•	If using Tailwind: set up per docs (PostCSS config + tailwind.config.js, add base styles)
+
+App Structure:
+
+src/
+  main.tsx
+  App.tsx
+  styles.css (or tailwind)
+  store/state.ts            // Zustand store + BroadcastChannel sync
+  utils/notify.ts           // Web Notifications + vibrate helper
+  utils/time.ts             // formatIST(ts) using Asia/Kolkata
+  utils/bus.ts              // broadcast + storage fallback helpers
+  components/TabBar.tsx
+  components/StatusChip.tsx
+  components/Timeline.tsx
+  views/UserView.tsx
+  views/AmbulanceView.tsx
+  views/HospitalView.tsx
+  types.ts
+
+Shared Demo Data (prefill in store):
+
+export const demoPatient = {
+  id: "PT-001",
+  name: "Rahul Mehta",
+  age: 24,
+  blood: "O+",
+  conditions: ["Asthma"],
+  allergies: ["Penicillin"],
+  guardian: { name: "Asha Mehta", phone: "+91-90000-00000" },
+};
+
+Global State Shape (ai4h_state in Zustand + localStorage):
+
+type Status = "NEW" | "ACK" | "ENROUTE" | "ARRIVED" | null;
+
+type HistoryItem = {
+  ts: string;
+  actor: "USER" | "AMBULANCE" | "HOSPITAL";
+  type: "SOS_NEW" | "AMB_ACK" | "AMB_ENROUTE" | "AMB_ARRIVED" | "HOSP_PREP";
+  note?: string;
+};
+
+type AI4HState = {
+  status: Status;
+  etaMin: number | null;
+  patient: typeof demoPatient | null;
+  geo?: { lat?: number; lon?: number; address?: string };
+  history: HistoryItem[];
+  lastEventTs?: string;
+};
+
+Cross-Tab Sync:
+	•	Create BroadcastChannel('ai4h') in store/state.ts.
+	•	On any state update, persist to localStorage.ai4h_state and postMessage on the channel.
+	•	Add window storage event fallback (if BroadcastChannel unsupported).
+	•	Each tab listens and re-hydrates state + re-renders.
+
+Web Notifications (utils/notify.ts):
+	•	safeNotify(title, body) → request permission once, show notification for SOS or status changes; call navigator.vibrate?.(200) when available.
+
+App Behavior by View:
+	1.	UserView
+
+	•	Show Emergency Profile card (from demoPatient) and a Location panel:
+	•	Try navigator.geolocation.getCurrentPosition → set geo.lat/lon (else manual address input).
+	•	Big red “🚨 EMERGENCY SOS” button:
+	•	Writes { type: "SOS_NEW", ts: nowISO, status:"NEW", etaMin:7, patient, geo } to store.
+	•	Appends to history.
+	•	Broadcasts + persists.
+	•	Toast “Emergency Alert Sent”.
+	•	Timeline: last 10 events (read from state).
+
+	2.	AmbulanceView
+
+	•	If status is null, show “Waiting for alerts…”
+	•	On SOS_NEW:
+	•	Show Incoming Emergency card: name, blood, conditions, guardian, location/ETA, StatusChip (NEW=red).
+	•	Call safeNotify("NEW EMERGENCY", "Rahul (O+), Asthma").
+	•	Action buttons:
+	•	Acknowledge → set status:"ACK", etaMin:6, push AMB_ACK.
+	•	Start En-Route → status:"ENROUTE", start a countdown (interval every 30s decrementing ETA; stop at 0), push AMB_ENROUTE.
+	•	Mark Arrived → status:"ARRIVED", push AMB_ARRIVED.
+	•	Show a simple progress bar tied to ETA.
+	•	Timeline below.
+
+	3.	HospitalView
+
+	•	On SOS: display Incoming Patient card with StatusChip & ETA.
+	•	Prep Checklist: ER Bed, O+ Blood, Ventilator, Asthma Nebulizer (checkboxes; local UI state).
+	•	Button “Prep Started” → push HOSP_PREP to history; broadcast.
+	•	“Today’s Alerts” table (just list every SOS_NEW received with current status).
+	•	Timeline below.
+
+Tab Bar & Persistence:
+	•	TabBar with three tabs. Persist last tab in localStorage.ai4h_lastTab.
+
+Utilities:
+	•	formatIST(ts) using toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }).
+	•	toast(msg) (simple React portal or inline div).
+
+Styling:
+	•	Tailwind recommended: large touch targets, rounded xl, subtle cards, status colors:
+	•	NEW: red-600, ACK: amber-500, ENROUTE: sky-600, ARRIVED: green-600.
+
+Acceptance Criteria (must pass):
+	1.	Open app in 3 browser tabs, set each to User, Ambulance, Hospital.
+	2.	Click SOS on User → both other tabs instantly show alert + browser notification.
+	3.	On Ambulance: Acknowledge → Start En-Route (ETA ticks down) → Mark Arrived; all tabs update status chips live.
+	4.	On Hospital: click Prep Started → appears in all timelines.
+	5.	Refresh any tab → state rehydrates from localStorage without breaking.
+
+Nice-to-have (if time):
+	•	QR fallback: generate a QR (using qrcode) for the SOS payload; a simple “Paste JSON” modal on Ambulance/Hospital to simulate scanning.
+	•	Web NFC (optional): add buttons to write/read NDEF (Chrome Android) for bonus points.
+
+Deliverables:
+	•	Complete Vite project with the structure above.
+	•	Clear README.md with run steps:
+	•	npm i
+	•	npm run dev
+	•	Open http://localhost:5173 in 3 tabs and demo.
+
+⸻
+
+If the AI starts drifting, remind it:
+“Keep three views in one app, use Zustand + BroadcastChannel for cross-tab sync, and implement Web Notifications on SOS & status changes.”
+
+Want me to also add a Judge demo script (60–90s) as a README section for your team?
