@@ -7,9 +7,13 @@ import { pickHospital, findAlternativeRoute } from "./logic/routing";
 import { insertEmergencySchema } from "@shared/schema";
 import type { Emergency, HospitalCapability } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { setupWebSocket, broadcastEmergency } from "./websocket";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const repo = selectRepo();
+  const httpServer = createServer(app);
+  
+  setupWebSocket(httpServer);
 
   // Emergency routes with enhanced functionality
   app.get("/api/emergencies", async (req, res) => {
@@ -123,6 +127,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Broadcast emergency creation to all connected WebSocket clients
+      broadcastEmergency('emergency_created', {
+        legacy: legacyEmergency,
+        enhanced: enhancedEmergency
+      });
+      
       // Maintain backward compatibility - return only the legacy emergency
       res.status(201).json(legacyEmergency);
     } catch (error) {
@@ -138,6 +148,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!emergency) {
         return res.status(404).json({ message: "Emergency not found" });
       }
+      
+      // Broadcast emergency update to all connected WebSocket clients
+      broadcastEmergency('emergency_updated', emergency);
+      
       res.json(emergency);
     } catch (error) {
       res.status(400).json({ message: "Invalid emergency data", error });
@@ -508,8 +522,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch positions" });
     }
   });
-
-  const httpServer = createServer(app);
 
   return httpServer;
 }
