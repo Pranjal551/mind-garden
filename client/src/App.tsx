@@ -3,7 +3,6 @@ import { useAI4HStore } from "./store/ai4h-store";
 import { TabBar } from "./components/TabBar";
 import { UserView } from "./views/UserView";
 import { EnhancedAmbulanceView } from "./views/EnhancedAmbulanceView";
-import { HospitalView } from "./views/HospitalView";
 import { HospitalCapacityConsole } from "./views/HospitalCapacityConsole";
 import { AdminDashboard } from "./views/AdminDashboard";
 import { loadLastTab } from "./utils/bus";
