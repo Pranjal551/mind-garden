@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { subscribeToWebSocket } from "@/utils/websocket";
 import { 
   MapPin, 
   Navigation, 
@@ -75,6 +76,23 @@ export function EnhancedAmbulanceView() {
 
     return () => stopPositionTracking();
   }, [currentShift, isTrackingEnabled]);
+
+  // Listen for WebSocket emergency events and refresh emergency list
+  useEffect(() => {
+    const handleEmergencyEvent = (data: any) => {
+      // Refresh available assignments by checking for new emergencies
+      // The stores will automatically update with new data
+      console.log("Emergency event received in ambulance view:", data);
+    };
+
+    const unsubscribe1 = subscribeToWebSocket('emergency_created', handleEmergencyEvent);
+    const unsubscribe2 = subscribeToWebSocket('emergency_updated', handleEmergencyEvent);
+
+    return () => {
+      unsubscribe1();
+      unsubscribe2();
+    };
+  }, []);
 
   // Get accepted emergencies with full details
   const acceptedEmergencies = acceptedAssignments

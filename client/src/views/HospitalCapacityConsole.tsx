@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { subscribeToWebSocket } from "@/utils/websocket";
 import { 
   Building2, 
   Users, 
@@ -103,6 +104,7 @@ const ALTERNATE_HOSPITALS = [
 export function HospitalCapacityConsole() {
   const [currentHospital, setCurrentHospital] = useState<Hospital | null>(null);
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [emergencies, setEmergencies] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showCSVDialog, setShowCSVDialog] = useState(false);
@@ -161,7 +163,27 @@ export function HospitalCapacityConsole() {
   // Load hospitals and select current one
   useEffect(() => {
     loadHospitals();
+    loadEmergencies();
   }, []);
+
+  // Listen for WebSocket emergency events and reload data
+  useEffect(() => {
+    const handleEmergencyEvent = () => {
+      loadEmergencies();
+      toast({
+        title: "New Emergency Alert",
+        description: "A new emergency has been created. Data refreshed.",
+      });
+    };
+
+    const unsubscribe1 = subscribeToWebSocket('emergency_created', handleEmergencyEvent);
+    const unsubscribe2 = subscribeToWebSocket('emergency_updated', handleEmergencyEvent);
+
+    return () => {
+      unsubscribe1();
+      unsubscribe2();
+    };
+  }, [toast]);
 
   const loadHospitals = async () => {
     setLoading(true);
@@ -184,6 +206,22 @@ export function HospitalCapacityConsole() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadEmergencies = async () => {
+    try {
+      const response = await fetch('/api/emergencies');
+      if (response.ok) {
+        const emergenciesData = await response.json();
+        setEmergencies(emergenciesData);
+        
+        if (emergenciesData.length > 0 && selectedEmergencyPatient === DUMMY_EMERGENCY_PATIENTS[0]) {
+          setSelectedEmergencyPatient(emergenciesData[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load emergencies:", error);
     }
   };
 
@@ -602,7 +640,7 @@ export function HospitalCapacityConsole() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {DUMMY_EMERGENCY_PATIENTS.map((p) => (
+                      {(emergencies.length > 0 ? emergencies : DUMMY_EMERGENCY_PATIENTS).map((p) => (
                         <button
                           key={p.id}
                           onClick={() => setSelectedEmergencyPatient(p)}
