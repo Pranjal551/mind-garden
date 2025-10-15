@@ -4,6 +4,15 @@ This is an AI4Health Emergency MVP application that simulates a healthcare emerg
 
 # Recent Changes
 
+**October 15, 2025 - WebSocket Real-Time Emergency Notifications**
+- Implemented complete WebSocket infrastructure for real-time emergency notifications across all interfaces
+- Created WebSocket server with broadcasting capabilities for emergency_created and emergency_updated events
+- Built WebSocket client utility with automatic reconnection logic and event subscription system
+- Enhanced Hospital and Ambulance views to receive and respond to real-time emergency updates
+- Hospital dashboard now fetches and displays real emergency data from API with automatic refresh on WebSocket events
+- End-to-end flow confirmed: Patient emergency → WebSocket broadcast → Hospital/Ambulance instant updates
+- System validated as production-ready by architect review
+
 **October 14, 2025 - Replit Environment Setup**
 - Successfully imported project from GitHub and configured for Replit environment
 - Installed Node.js 20 and all npm dependencies
@@ -31,10 +40,28 @@ Preferred communication style: Simple, everyday language.
 - **Data Layer**: In-memory storage implementation with interface for future database integration
 - **Development Integration**: Vite middleware integration for seamless full-stack development
 
-## Cross-Tab Communication
+## Real-Time Communication Architecture
+
+### WebSocket Infrastructure
+- **Server-Side WebSocket**: Dedicated WebSocket server on `/ws` endpoint for bidirectional real-time communication
+- **Broadcasting System**: Event-based broadcasting to all connected clients for emergency updates
+- **Event Types**: `emergency_created`, `emergency_updated`, and `connected` events
+- **Connection Management**: Automatic tracking of connected clients with cleanup on disconnect
+- **Client Reconnection**: Automatic reconnection with 3-second retry interval on connection loss
+- **Event Subscription**: Type-safe event subscription system for handling specific message types
+
+### Cross-Tab Communication
 - **Primary Method**: BroadcastChannel API for real-time state synchronization between browser tabs
 - **Fallback Strategy**: LocalStorage events and direct storage access for browsers without BroadcastChannel support
 - **State Persistence**: Automatic state saving to localStorage with restoration on application load
+
+### Emergency Notification Flow
+1. Patient creates emergency via User interface
+2. Server broadcasts `emergency_created` event via WebSocket to all connected clients
+3. Hospital and Ambulance interfaces receive the event instantly
+4. Views automatically refresh their emergency data from the API
+5. Toast notifications inform users of new emergency alerts
+6. Real-time updates ensure all dashboards stay synchronized
 
 ## Data Storage Solutions
 - **Database Schema**: Drizzle ORM with PostgreSQL schema definitions for users and emergencies
