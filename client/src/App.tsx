@@ -12,10 +12,15 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { connectWebSocket, disconnectWebSocket } from "./utils/websocket";
+import { useEmergencySync } from "./hooks/useEmergencySync";
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>("user");
   const initializeStore = useAI4HStore((state) => state.initializeStore);
+  
+  // Initialize WebSocket emergency sync
+  useEmergencySync();
 
   useEffect(() => {
     // Initialize the store and load persisted state
@@ -29,6 +34,14 @@ function App() {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
+
+    // Initialize WebSocket connection for real-time updates
+    connectWebSocket();
+
+    // Cleanup WebSocket on unmount
+    return () => {
+      disconnectWebSocket();
+    };
   }, [initializeStore]);
 
   const renderView = () => {

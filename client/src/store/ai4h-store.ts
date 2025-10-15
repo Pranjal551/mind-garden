@@ -15,6 +15,7 @@ interface AI4HStore extends AI4HState {
   updateLocation: (geo: GeoLocation) => void;
   decrementETA: () => void;
   resetEmergency: () => void;
+  loadEmergencyFromWebSocket: (emergency: any) => void;
   // State management
   initializeStore: () => void;
   setFromBroadcast: (state: AI4HState) => void;
@@ -233,6 +234,28 @@ export const useAI4HStore = create<AI4HStore>((set, get) => ({
 
   setFromBroadcast: (state: AI4HState) => {
     set(state);
+  },
+
+  loadEmergencyFromWebSocket: (emergency: any) => {
+    const now = nowISO();
+    const historyItem: HistoryItem = {
+      ts: now,
+      actor: "USER",
+      type: "SOS_NEW",
+      note: "Emergency alert received",
+    };
+
+    const newState: AI4HState = {
+      status: emergency.status || "NEW",
+      etaMin: 7,
+      patient: emergency.patient || emergency.patientInfo || demoPatient,
+      geo: emergency.location || emergency.geo || { address: "Location not specified" },
+      history: [historyItem],
+      lastEventTs: now,
+    };
+
+    set(newState);
+    broadcastState(newState);
   },
 }));
 

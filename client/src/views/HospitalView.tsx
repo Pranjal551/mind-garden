@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAI4HStore } from "../store/ai4h-store";
 import { Timeline } from "../components/Timeline";
 import { StatusChip } from "../components/StatusChip";
